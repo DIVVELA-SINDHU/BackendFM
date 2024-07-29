@@ -1,6 +1,7 @@
 const cors=require('cors')
 const express=require('express')
 const bodyParser=require('body-parser')
+const axios=require('axios')
 const mysql=require('mysql')
 const bcrypt = require('bcryptjs');
 const { genQuestions } = require('./quiz')
@@ -95,10 +96,13 @@ app.post('/login',(request,response)=>{
 
 app.post('/sregister',(request,response) => {
     var { student_id, userName, faculty_id} = request.body;
+    console.log(request.body);
     // faculty_id='20JRA0523'
     query='SELECT designation FROM UserDetails WHERE id=\''+faculty_id+'\'';
+    console.log(query);
     connection.query(query,(err,res)=>{
-        console.log(res[0].designation);
+        console.log(res);
+        // console.log(res[0].designation);
         if(err){
             throw err;
         }
@@ -182,9 +186,12 @@ async function gatherData(requestData){
     return await genQuestions(requestData);
 }
 
+//to create test Questions
 app.post('/addTest', (request,response)=>{
     const { fact, testName, subject, topic, questions } = request.body;
     console.log(fact, testName, subject, topic, questions)
+    global.facId=fact;
+    global.teName=testName;
     finalData={}
     global.n=questions;
     
@@ -230,34 +237,45 @@ app.post('/sendTest',(req,res)=>{
     })
 })
 
-//storing questions to db
+//storing test questions to db
 app.post('/sendQuestions',(req,res)=>{
-    testName=req.body.testName;
-    console.log(testName);
+    const {testquestions}=req.body;
+    // console.log("facultyId:",facId);
+    // console.log("Test name:",teName);
+    // console.log("Test Questions",testquestions);
+    Questions=testquestions.response.Questions;
+    Answers=[]
     testId=0
-    console.log(finalTestData)
-    const questionsArray = Object.values(finalTestData.response).map(({ question, correctAnswer }) => ({
-        question,
-        correctAnswer
-    }));
-    console.log(questionsArray);
-    cnt=0;
-    sql1="SELECT TestID from TestDetails where TestName=\'"+testName+'\'';
-        connection.query(sql1,(err,data)=>{
-            if(err) throw err;
-            // console.log(data[0])
-            testId=data[0].TestID;
-            // console.log(testId);
-        })
-    for(i=0;i<questionsArray.length;i++){
-        console.log(testId);
-        sql="INSERT INTO QuestionDetails(TestID,QuestionName,Answer) VALUES(?,?,?)";
-        connection.query(sql,[testId,questionsArray[cnt].question,questionsArray[cnt].correctAnswer],(err,data)=>{
-            if(err) throw err;
-            cnt++;
-        })
+    if(testquestions.response.length!=0)
+    {
+        Answers=testquestions.response.CorrectAnswer;
     }
-    res.send(testId);
+    else
+    {
+        Answers=testquestions.response.CorrectAnswers;
+    }
+    // console.log("Questions:",Questions);
+    // console.log("Answers",Answers);
+    sql="INSERT INTO TestDetails(ID,TestName,Status) values(?,?,?)";
+    connection.query(sql,[facId,teName,1],(err,data)=>{
+        if(err) throw err;
+        if(data) {
+            console.log("Test created");
+            sql1="SELECT TestID from TestDetails where TestName=\'"+teName+'\'';
+            connection.query(sql1,(err,data1)=>{
+                if(err) throw err;
+                // console.log(data[0])
+                testId=data1[0].TestID;
+                console.log(testId);
+                sql1="INSERT INTO QuestionDetails(TestID,Questions,Answers) values(?,?,?)";
+                connection.query(sql1,[testId,JSON.stringify(Questions),JSON.stringify(Answers)],(err,data2)=>{
+                    if(err) throw err;
+                    console.log("Data Stored");
+                })
+            })
+        }
+    })
+    res.status(200).send("Data stored");
 })
 
 app.post('/validate',(req,res)=>{
@@ -352,18 +370,27 @@ app.post('/sreports',(req,res)=>{
     })
 })
 
-//inserting test details
-app.post('/addTest',(req,res)=>{
-    console.log(req.body.ID,req.body.TestName)
-    db.addTestDetails(req.body.ID,req.body.TestName)
-    .then((rows)=>{
-        res.send("data inserted successfully")
-    }) 
+app.get('/getQuote',async (req,res)=>{
+    try {
+        const response = await axios.get('https://zenquotes.io/api/quotes/abb763c45d0ef3a57ad53db5bf70ffdb');
+        const quote = response.data[0]; 
+        console.log('Quote:');
+        console.log(quote);
+        res.status(200).send(quote);
+    } catch (error) {
+        console.error('Error fetching Ron Swanson quote:', error.message);
+    }
+})
 
-    .catch((err)=>{
-        res.sendStatus(err)
-    })
-
+app.get('/getJoke',async (req,res)=>{
+    try {
+        // https://official-joke-api.appspot.com/jokes/programming/ten
+        const response = await axios.get('https://official-joke-api.appspot.com/jokes/programming/random');
+        console.log(response.data);
+        res.status(200).send(response.data);
+    } catch (error) {
+        console.error('Error:', error);
+    }
 })
 
 app.listen(3006,()=>{
